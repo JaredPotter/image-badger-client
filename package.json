@@ -1,6 +1,6 @@
 {
   "name": "image-optimizer-pro-client",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Browser TypeScript Client for ImageOptimizerPro",
   "main": "dist/index.js",
   "scripts": {
