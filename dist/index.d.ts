@@ -1,6 +1,5 @@
-export declare enum ResponseType {
-    File = 0,
-    ArrayBuffer = 1
-}
-declare const optimize: (file: File, responseType: ResponseType) => Promise<ArrayBuffer>;
-export { optimize };
+export declare type FileCompleted = (file: ArrayBuffer, filename: string) => void;
+declare const app: (serverUrl: string, httpPort?: number, wsPort?: number) => void;
+declare const optimize: (files: File[] | ArrayBuffer[], fileCompleted: FileCompleted) => Promise<ArrayBuffer[]>;
+declare const download: (file: ArrayBuffer, filename: string) => void;
+export { app, optimize, download };

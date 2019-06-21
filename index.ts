@@ -1,101 +1,132 @@
-import axios, { AxiosResponse } from 'axios';
+import axios from 'axios';
+import * as uuid from 'uuid/v4';
 
-export enum ResponseType {
-    File = 0,
-    ArrayBuffer = 1,
-}
+import { isArrayBuffer, isFile, base64DecToArr, base64StringToArrayBuffer } from './utility';
 
-const BASE_API_URL: string = 'http://localhost:3000';
-// const BASE_API_URL: string = 'http://imageoptimizerpro.com:3000';
+export type FileCompleted = (file: ArrayBuffer, filename: string) => void;
 
-const BASE_WEB_SOCKET_URL: string = 'ws://localhost:8080';
-// const BASE_WEB_SOCKET_URL: string = 'wss://imageoptimizerpro.com:8080';
+let baseApiUrl = 'http://';
+// let baseApiUrl = 'https://';
+let baseWsUrl = 'ws://';
+let webSocketConnection: WebSocket;
+// let baseWsUrl = 'wss://';
+
+let sizeToFilenameMap: Map<number, string> = new Map<number, string>();
+
+const app = function(serverUrl: string, httpPort: number = 3000, wsPort: number = 8080) {
+    baseApiUrl = `${baseApiUrl}${serverUrl}:${httpPort}`;
+    baseWsUrl = `${baseWsUrl}${serverUrl}:${wsPort}`;
+
+    // Establish WebSocket Connection.
+    webSocketConnection = new WebSocket(baseWsUrl);
+    webSocketConnection.binaryType = 'arraybuffer';
+};
   
-const optimize = function(file: File /*| ArrayBuffer*/, responseType: ResponseType): Promise<ArrayBuffer> {
-    return new Promise(async (resolve) => {
-        const formData = new FormData();
-        let newFile: File;
+const optimize = function(files: File[] | ArrayBuffer[], fileCompleted: FileCompleted): Promise<ArrayBuffer[]> {
+    if(!webSocketConnection || webSocketConnection.readyState !== WebSocket.OPEN) {
+        throw 'app not initilized. Call '
+    }
 
-        // if(instanceof file === ) {
-        //     newFile = <File>(new Blob([new Uint8Array(<ArrayBuffer>file)]));
-        //     formData.append('file', newFile);
-        // }
-        // else if(responseType === ResponseType.File) {
-            newFile = <File>file;
-            formData.append('file', newFile);
-        // }
-
-        const response = await axios.post(
-            `${BASE_API_URL}/optimize`, 
-            formData, 
-            { responseType: 'text'}
-        );
-
-        // debugger;s
-        if(response && response.status === 200 && response.data) {
-            const jobId: string = response.data;
-
-            // Establish WebSocket Connection.
-            // const url = 'wss://' + BASE_WEB_SOCKET_URL; // Secure - Prod; todo: move this to environments file.
-            const url = BASE_WEB_SOCKET_URL; // Unsecure - dev            
-            const connection = new WebSocket(url);
-            // connection.binaryType = 'arraybuffer'; // maybe not needed?
-
-            connection.onopen = () => {
-                // debugger;
-                // console.log('WebSocket Connected');
-            }
-          
-            connection.onerror = error => {
-                console.log(`WebSocket error: ${error}`)
-            }
-
-            connection.onmessage = (event: MessageEvent) => {
-                debugger;
-                const data = JSON.parse(event.data);
-                const action = data.action;
-        
-                switch(action) {
-                    case 'completed':
-                        debugger;
-                    default:
-                        // do nothing.
+    if(files.length > 0) {
+        return new Promise(async (resolve, reject) => {
+            const formData = new FormData();
+    
+            for(const file of files) {
+                let newFile: File;
+                const placeholder = uuid();
+                
+                if(isArrayBuffer(file)) {
+                    // debugger;
+                    newFile = <File>(new Blob([new Uint8Array(<ArrayBuffer>file)]));
+                    formData.append(placeholder, newFile);
                 }
-                // const arrayBuffer = data.arrayBuffer;
-        
-        
-            };   
-            
-            // Send jobId.
-            const payload = {
-                action: 'waiting',
-                jobId: jobId,
-            };
-            const jsonPayload = JSON.stringify(payload);
+                else if(isFile(file) ){
+                    newFile = <File>file;
+                    formData.append(placeholder, newFile);
+                }
+            }    
+    
+            const response = await axios.post(
+                `${baseApiUrl}/optimize`, 
+                formData, 
+                { responseType: 'text'}
+            );
+    
+            // debugger;s
+            if(response && response.status === 200 && response.data) {
+                const jobId: string = response.data;
+    
+                webSocketConnection.onopen = () => {
+                    // debugger;
+                    console.log('WebSocket Connected');
+                }
+              
+                webSocketConnection.onerror = error => {
+                    console.log(`WebSocket error: ${error}`);
+                    resolve();
+                }
+    
+                webSocketConnection.onmessage = (event: MessageEvent) => {
+                    if(isArrayBuffer(event.data)) {
+                        const data = event.data;
+                        const size = (<ArrayBuffer>data).byteLength;
+                        const filename = <string>sizeToFilenameMap.get(size);
+                        fileCompleted(data, filename);
+                        sizeToFilenameMap.delete(size);
+                    }
+                    else if(event.data === 'close') {                        
+                        webSocketConnection.close();
+                        resolve();
+                    }
+                    else {
+                        let data;
 
-            connection.send(jsonPayload);
-        }
-        else {
-            debugger;
-            // error / other
-        }
+                        try {
+                            data = JSON.parse(event.data);                            
+                        } catch (error) {
+                            // If not json, 
+                            // do nothing.
+                        }
 
-
-        resolve();
-    });
+                        if(data.size && data.filename) {
+                            sizeToFilenameMap.set(data.size, data.filename);
+                        }
+                    }
+                };
+                
+                // Send jobId.
+                const payload = {
+                    action: 'waiting',
+                    jobId: jobId,
+                };
+                const jsonPayload = JSON.stringify(payload);
+    
+                webSocketConnection.send(jsonPayload);
+            }
+            else {
+                debugger;
+                // error / other
+            }
+        });
+    }
+    else {
+        throw 'No files selected';
+    }
 }
 
-function handleFile(file: File) {
+const download = function(file: ArrayBuffer, filename: string) {
+    const blob = new Blob([new Uint8Array(file)]);
+    const url = window.URL.createObjectURL(blob);
+    let a: HTMLAnchorElement = document.createElement("a");
 
-}
+    document.body.appendChild(a);
 
-function handleArrayBuffer(file: ArrayBuffer) {
+    a.href = url;
+    a.download = filename;
 
-}
-
-
+    a.click();
+    window.URL.revokeObjectURL(url);
+};
   
-export {
-    optimize
-}
+export { app, optimize, download }
   
