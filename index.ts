@@ -128,5 +128,5 @@ const download = function(file: ArrayBuffer, filename: string) {
     window.URL.revokeObjectURL(url);
 };
   
-export { app, optimize, download }
+export { app, optimize, download, webSocketConnection }
   

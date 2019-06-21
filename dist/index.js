@@ -15,13 +15,14 @@ let baseApiUrl = 'http://';
 // let baseApiUrl = 'https://';
 let baseWsUrl = 'ws://';
 let webSocketConnection;
+exports.webSocketConnection = webSocketConnection;
 // let baseWsUrl = 'wss://';
 let sizeToFilenameMap = new Map();
 const app = function (serverUrl, httpPort = 3000, wsPort = 8080) {
     baseApiUrl = `${baseApiUrl}${serverUrl}:${httpPort}`;
     baseWsUrl = `${baseWsUrl}${serverUrl}:${wsPort}`;
     // Establish WebSocket Connection.
-    webSocketConnection = new WebSocket(baseWsUrl);
+    exports.webSocketConnection = webSocketConnection = new WebSocket(baseWsUrl);
     webSocketConnection.binaryType = 'arraybuffer';
 };
 exports.app = app;
